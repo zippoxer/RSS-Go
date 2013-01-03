@@ -2,11 +2,10 @@
 package rss
 
 import (
+	"encoding/xml"
 	"io"
 	"strings"
 	"time"
-	"os"
-	"xml"
 )
 
 type Feed struct {
@@ -21,7 +20,7 @@ type Item struct {
 	Title       string
 	Description string
 	Link        string
-	When        int64
+	When        time.Time
 }
 
 const feedTitle = "title"
@@ -51,24 +50,16 @@ const (
 	levelPost = 2
 )
 
-func parseTime(f, v string) int64 {
-	t, err := time.Parse(f, v)
-	if err != nil || v == "" {
-		return time.Seconds()
-	}
-	return t.Seconds()
-}
-
-func Get(r io.Reader) (*Feed, os.Error) {
+func Get(r io.Reader) (*Feed, error) {
 	var tag string
 	var atom bool
 	var level int
 	feed := &Feed{}
 	item := &Item{}
-	parser := xml.NewParser(r)
+	d := xml.NewDecoder(r)
 	for {
-		token, err := parser.Token()
-		if err == os.EOF {
+		token, err := d.Token()
+		if err == io.EOF {
 			break
 		} else if err != nil {
 			return nil, err
@@ -85,7 +76,7 @@ func Get(r io.Reader) (*Feed, os.Error) {
 				level = levelFeed
 			case (!atom && tag == rssItem) || (atom && tag == atomEntry):
 				level = levelPost
-				item = &Item{When: time.Nanoseconds()}
+				item = &Item{When: time.Now()}
 			case atom && tag == atomLink:
 				for _, a := range t.Attr {
 					if strings.ToLower(a.Name.Local) == atomLinkHref {
@@ -137,7 +128,11 @@ func Get(r io.Reader) (*Feed, os.Error) {
 					default:
 						f = "2006-01-02T15:04:05-07:00"
 					}
-					item.When = parseTime(f, text)
+					t, err := time.Parse(f, text)
+					if err != nil {
+						return nil, err
+					}
+					item.When = t
 				case !atom && tag == rssPubDate:
 					var f string
 					if strings.HasSuffix(strings.ToUpper(text), "T") {
@@ -145,7 +140,11 @@ func Get(r io.Reader) (*Feed, os.Error) {
 					} else {
 						f = "Mon, 2 Jan 2006 15:04:05 -0700"
 					}
-					item.When = parseTime(f, text)
+					t, err := time.Parse(f, text)
+					if err != nil {
+						return nil, err
+					}
+					item.When = t
 				}
 			}
 		}
